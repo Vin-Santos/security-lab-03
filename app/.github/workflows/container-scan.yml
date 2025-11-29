@@ -1,0 +1,140 @@
+name: Container Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Scan semanal aos domingos
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+
+jobs:
+  trivy-scan:
+    name: Trivy Vulnerability Scanner
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+      
+      - name: Build imagem Docker
+        run: |
+          docker build -t ${{ github.repository }}:${{ github.sha }} .
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ github.repository }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
+      - name: Run Trivy em formato table
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ github.repository }}:${{ github.sha }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+  grype-scan:
+    name: Grype Vulnerability Scanner
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+      
+      - name: Build imagem Docker
+        run: |
+          docker build -t test-image:latest .
+      
+      - name: Scan com Grype
+        uses: anchore/scan-action@v3
+        id: scan
+        with:
+          image: "test-image:latest"
+          fail-build: true
+          severity-cutoff: high
+      
+      - name: Upload resultados
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif }}
+
+  docker-scout:
+    name: Docker Scout Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+      
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build imagem
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: scout-demo:latest
+      
+      - name: Docker Scout CVE Analysis
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: scout-demo:latest
+          only-severities: critical,high
+          exit-code: true
+
+  scan-summary:
+    name: Consolidar Resultados
+    needs: [trivy-scan, grype-scan, docker-scout]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Criar resumo de segurança
+        run: |
+          echo "# 🐋 Relatório de Segurança de Containers" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Status dos Scanners" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔍 Trivy: ${{ needs.trivy-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔍 Grype: ${{ needs.grype-scan.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔍 Docker Scout: ${{ needs.docker-scout.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.trivy-scan.result }}" == "failure" ] || \
+             [ "${{ needs.grype-scan.result }}" == "failure" ] || \
+             [ "${{ needs.docker-scout.result }}" == "failure" ]; then
+            echo "⚠️ **VULNERABILIDADES CRÍTICAS DETECTADAS!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Ações Necessárias:" >> $GITHUB_STEP_SUMMARY
+            echo "1. Revisar relatórios de segurança na aba Security" >> $GITHUB_STEP_SUMMARY
+            echo "2. Atualizar imagem base para versão mais recente" >> $GITHUB_STEP_SUMMARY
+            echo "3. Atualizar dependências vulneráveis" >> $GITHUB_STEP_SUMMARY
+            echo "4. Aplicar patches de segurança" >> $GITHUB_STEP_SUMMARY
+            echo "5. Re-executar scans após correções" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ Nenhuma vulnerabilidade crítica detectada!" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📅 Scan executado em: $(date)" >> $GITHUB_STEP_SUMMARY
