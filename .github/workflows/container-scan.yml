@@ -1,6 +1,11 @@
 name: Container Security Scan
 
 on:
+env:
+  DOCKERFILE: Dockerfile.secure  # ou Dockerfile.distroless
+
+# Alterar nos jobs para usar:
+# docker build -f ${{ env.DOCKERFILE }} ...
   push:
     branches: [ main, develop ]
   pull_request:
