@@ -1,0 +1,23 @@
+# ✅ ETAPA 1: Build
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+COPY app/package*.json ./
+RUN npm ci --only=production && npm cache clean --force
+COPY app/ ./
+
+# ✅ ETAPA 2: Runtime com Google Distroless
+FROM gcr.io/distroless/nodejs20-debian12
+
+# ✅ Copiar aplicação
+WORKDIR /app
+COPY --from=builder /app ./
+
+# ✅ Usuário não-root (distroless já usa nonroot por padrão)
+USER nonroot
+
+# ✅ Expor porta
+EXPOSE 3000
+
+# ✅ Comando
+CMD ["server.js"]

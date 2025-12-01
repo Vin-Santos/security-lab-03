@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+.github
+
+# Node
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentação
+README.md
+*.md
+docs/
+
+# Testes
+test/
+tests/
+*.test.js
+
+# CI/CD
+.github/
+
+# Ambiente
+.env
+.env.*
+*.key
+*.pem
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

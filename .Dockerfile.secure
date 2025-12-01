@@ -1,0 +1,53 @@
+# ✅ ETAPA 1: Build Stage
+FROM node:20-alpine AS builder
+
+# ✅ Criar usuário não-root no build stage
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# ✅ Definir diretório de trabalho
+WORKDIR /app
+
+# ✅ Copiar apenas arquivos de dependências primeiro (cache layer)
+COPY --chown=nodejs:nodejs app/package*.json ./
+
+# ✅ Instalar apenas dependências de produção
+RUN npm ci --only=production && \
+    npm cache clean --force
+
+# ✅ Copiar código da aplicação
+COPY --chown=nodejs:nodejs app/ ./
+
+# ✅ ETAPA 2: Runtime Stage (distroless-like)
+FROM node:20-alpine AS runtime
+
+# ✅ Instalar apenas dumb-init para gerenciar processos
+RUN apk add --no-cache dumb-init
+
+# ✅ Criar usuário não-root
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# ✅ Definir diretório de trabalho
+WORKDIR /app
+
+# ✅ Copiar node_modules e código do build stage
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nodejs:nodejs /app ./
+
+# ✅ Mudar para usuário não-root
+USER nodejs
+
+# ✅ Expor porta não-privilegiada
+EXPOSE 3000
+
+# ✅ Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+# ✅ Usar dumb-init para gerenciar sinais
+ENTRYPOINT ["dumb-init", "--"]
+
+# ✅ Comando final
+CMD ["node", "server.js"]
+

@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.secure
+    container_name: secure-app
+    
+    # ✅ Porta não-privilegiada
+    ports:
+      - "3000:3000"
+    
+    # ✅ Remover modo privilegiado
+    privileged: false
+    
+    # ✅ Capabilities mínimas (drop all, add apenas necessárias)
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    
+    # ✅ Read-only root filesystem
+    read_only: true
+    
+    # ✅ Tmpfs para arquivos temporários
+    tmpfs:
+      - /tmp
+      - /app/.npm
+    
+    # ✅ Security options
+    security_opt:
+      - no-new-privileges:true
+    
+    # ✅ Limites de recursos
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    
+    # ✅ Configurações de segurança adicionais
+    environment:
+      - NODE_ENV=production
+      - NODE_OPTIONS=--max-old-space-size=460
+    
+    # ✅ Política de restart
+    restart: unless-stopped
+    
+    # ✅ Health check
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health')"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    
+    # ✅ Usar user namespace
+    userns_mode: "host"
